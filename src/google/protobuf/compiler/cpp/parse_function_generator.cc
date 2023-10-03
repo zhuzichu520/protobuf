@@ -95,6 +95,9 @@ class ParseFunctionGenerator::GeneratedOptionProvider final
         ShouldSplit(field, gen_->options_),
     };
   }
+  bool ShouldProfileDrivenClusterAuxSubtable() const final {
+    return gen_->options_.profile_driven_cluster_aux_subtable;
+  }
 
  private:
   ParseFunctionGenerator* gen_;

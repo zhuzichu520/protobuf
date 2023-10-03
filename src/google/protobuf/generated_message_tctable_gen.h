@@ -53,6 +53,9 @@ struct PROTOBUF_EXPORT TailCallTableInfo {
    public:
     virtual PerFieldOptions GetForField(const FieldDescriptor*) const = 0;
 
+    // TODO: remove this after A/B test is done.
+    virtual bool ShouldProfileDrivenClusterAuxSubtable() const { return false; }
+
    protected:
     ~OptionProvider() = default;
   };
