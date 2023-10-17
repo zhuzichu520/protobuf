@@ -12,6 +12,7 @@ load("//:protobuf.bzl", "internal_py_proto_library")
 load("//build_defs:arch_tests.bzl", "aarch64_test", "x86_64_test")
 load("//build_defs:cpp_opts.bzl", "COPTS")
 load("//conformance:defs.bzl", "conformance_test")
+load("//src/google/protobuf/editions:defaults.bzl", "compile_edition_defaults", "embed_edition_defaults")
 load(":internal.bzl", "internal_copy_files", "internal_py_test")
 
 def build_targets(name):
@@ -143,6 +144,21 @@ def build_targets(name):
         ],
     )
 
+    compile_edition_defaults(
+        name = "python_edition_defaults",
+        srcs = ["//:descriptor_proto"],
+        maximum_edition = "2023",
+        minimum_edition = "PROTO2",
+    )
+
+    embed_edition_defaults(
+        name = "embedded_python_edition_defaults_generate",
+        defaults = "python_edition_defaults",
+        output = "google/protobuf/internal/python_edition_defaults.py",
+        placeholder = "DEFAULTS_VALUE",
+        template = "google/protobuf/internal/python_edition_defaults.py.template",
+    )
+
     py_library(
         name = "python_srcs",
         srcs = native.glob(
@@ -154,7 +170,7 @@ def build_targets(name):
                 "google/protobuf/internal/test_util.py",
                 "google/protobuf/internal/import_test_package/__init__.py",
             ],
-        ),
+        ) + ["google/protobuf/internal/python_edition_defaults.py"],
         imports = ["python"],
         srcs_version = "PY2AND3",
         visibility = [

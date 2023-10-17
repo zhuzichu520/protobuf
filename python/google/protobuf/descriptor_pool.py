@@ -35,11 +35,13 @@ directly instead of this class.
 __author__ = 'matthewtoia@google.com (Matt Toia)'
 
 import collections
+import threading
 import warnings
 
 from google.protobuf import descriptor
 from google.protobuf import descriptor_database
 from google.protobuf import text_encoding
+from google.protobuf.internal import python_edition_defaults
 from google.protobuf.internal import python_message
 
 _USE_C_DESCRIPTORS = descriptor._USE_C_DESCRIPTORS  # pylint: disable=protected-access
@@ -91,15 +93,17 @@ def _IsMessageSetExtension(field):
           field.type == descriptor.FieldDescriptor.TYPE_MESSAGE and
           field.label == descriptor.FieldDescriptor.LABEL_OPTIONAL)
 
+_edition_defaults_lock = threading.Lock()
+
 
 class DescriptorPool(object):
   """A collection of protobufs dynamically constructed by descriptor protos."""
 
   if _USE_C_DESCRIPTORS:
 
-   def __new__(cls, descriptor_db=None):
-     # pylint: disable=protected-access
-     return descriptor._message.DescriptorPool(descriptor_db)
+     def __new__(cls, descriptor_db=None):
+       # pylint: disable=protected-access
+       return descriptor._message.DescriptorPool(descriptor_db)
 
   def __init__(
       self, descriptor_db=None, use_deprecated_legacy_json_field_conflicts=False
@@ -131,6 +135,11 @@ class DescriptorPool(object):
     # full name or its tag number.
     self._extensions_by_name = collections.defaultdict(dict)
     self._extensions_by_number = collections.defaultdict(dict)
+    self._serialized_edition_defaults = (
+        python_edition_defaults._PROTOBUF_INTERNAL_PYTHON_EDITION_DEFAULTS
+    )
+    self._edition_defaults = None
+    self._feature_cache = dict()
 
   def _CheckConflictRegister(self, desc, desc_name, file_name):
     """Check if the descriptor name conflicts with another of the same name.
@@ -198,11 +207,11 @@ class DescriptorPool(object):
     file_desc.serialized_pb = serialized_file_desc_proto
     return file_desc
 
-  # Add Descriptor to descriptor pool is deprecated. Please use Add()
-  # or AddSerializedFile() to add a FileDescriptorProto instead.
-  @_Deprecated
-  def AddDescriptor(self, desc):
-    self._AddDescriptor(desc)
+    # Add Descriptor to descriptor pool is deprecated. Please use Add()
+    # or AddSerializedFile() to add a FileDescriptorProto instead.
+    @_Deprecated
+    def AddDescriptor(self, desc):
+      self._AddDescriptor(desc)
 
   # Never call this method. It is for internal usage only.
   def _AddDescriptor(self, desc):
@@ -258,11 +267,11 @@ class DescriptorPool(object):
         self._top_enum_values[full_name] = enum_value
     self._AddFileDescriptor(enum_desc.file)
 
-  # Add ServiceDescriptor to descriptor pool is deprecated. Please use Add()
-  # or AddSerializedFile() to add a FileDescriptorProto instead.
-  @_Deprecated
-  def AddServiceDescriptor(self, service_desc):
-    self._AddServiceDescriptor(service_desc)
+    # Add ServiceDescriptor to descriptor pool is deprecated. Please use Add()
+    # or AddSerializedFile() to add a FileDescriptorProto instead.
+    @_Deprecated
+    def AddServiceDescriptor(self, service_desc):
+      self._AddServiceDescriptor(service_desc)
 
   # Never call this method. It is for internal usage only.
   def _AddServiceDescriptor(self, service_desc):
@@ -279,11 +288,11 @@ class DescriptorPool(object):
                                 service_desc.file.name)
     self._service_descriptors[service_desc.full_name] = service_desc
 
-  # Add ExtensionDescriptor to descriptor pool is deprecated. Please use Add()
-  # or AddSerializedFile() to add a FileDescriptorProto instead.
-  @_Deprecated
-  def AddExtensionDescriptor(self, extension):
-    self._AddExtensionDescriptor(extension)
+    # Add ExtensionDescriptor to descriptor pool is deprecated. Please use Add()
+    # or AddSerializedFile() to add a FileDescriptorProto instead.
+    @_Deprecated
+    def AddExtensionDescriptor(self, extension):
+      self._AddExtensionDescriptor(extension)
 
   # Never call this method. It is for internal usage only.
   def _AddExtensionDescriptor(self, extension):
@@ -334,9 +343,9 @@ class DescriptorPool(object):
       python_message._AttachFieldHelpers(
           extension.containing_type._concrete_class, extension)
 
-  @_Deprecated
-  def AddFileDescriptor(self, file_desc):
-    self._InternalAddFileDescriptor(file_desc)
+    @_Deprecated
+    def AddFileDescriptor(self, file_desc):
+      self._InternalAddFileDescriptor(file_desc)
 
   # Never call this method. It is for internal usage only.
   def _InternalAddFileDescriptor(self, file_desc):
@@ -679,6 +688,54 @@ class DescriptorPool(object):
     service_descriptor = self.FindServiceByName(service_name)
     return service_descriptor.methods_by_name[method_name]
 
+  def SetFeatureSetDefaults(self, edition_defaults):
+    if self._edition_defaults is not None:
+      raise AssertionError('FeatureSetDefaults have already been set!')
+    self._edition_defaults = edition_defaults.SerializeToString()
+
+  def _CreateDefaultFeatures(self, edition):
+    # pylint: disable=g-import-not-at-top
+    from google.protobuf import descriptor_pb2
+
+    with _edition_defaults_lock:
+      if not self._edition_defaults:
+        self._edition_defaults = descriptor_pb2.FeatureSetDefaults()
+        self._edition_defaults.ParseFromString(
+            self._serialized_edition_defaults
+        )
+
+    if edition < self._edition_defaults.minimum_edition:
+      raise AssertionError(
+          'Edition %s is lower than the minimum supported edition %s!'
+          % (
+              edition,
+              self._edition_defaults.minimum_edition,
+          )
+      )
+    if edition > self._edition_defaults.maximum_edition:
+      raise AssertionError(
+          'Edition %s is greater than the maximum supported edition %s!'
+          % (
+              edition,
+              self._edition_defaults.maximum_edition,
+          )
+      )
+    defaults = descriptor_pb2.FeatureSet()
+    for d in self._edition_defaults.defaults:
+      if d.edition >= edition:
+        defaults.CopyFrom(d.features)
+        break
+    return defaults
+
+  def _InternFeatures(self, features):
+    serialized = features.SerializeToString()
+    with _edition_defaults_lock:
+      cached = self._feature_cache.get(serialized)
+      if cached is None:
+        self._feature_cache[serialized] = features
+        cached = features
+    return cached
+
   def _FindFileContainingSymbolInDb(self, symbol):
     """Finds the file in descriptor DB containing the specified symbol.
 
@@ -719,17 +776,22 @@ class DescriptorPool(object):
       direct_deps = [self.FindFileByName(n) for n in file_proto.dependency]
       public_deps = [direct_deps[i] for i in file_proto.public_dependency]
 
+      # pylint: disable=g-import-not-at-top
+      from google.protobuf import descriptor_pb2
+
       file_descriptor = descriptor.FileDescriptor(
           pool=self,
           name=file_proto.name,
           package=file_proto.package,
           syntax=file_proto.syntax,
+          edition=descriptor_pb2.Edition.Name(file_proto.edition),
           options=_OptionsOrNone(file_proto),
           serialized_pb=file_proto.SerializeToString(),
           dependencies=direct_deps,
           public_dependencies=public_deps,
           # pylint: disable=protected-access
-          create_key=descriptor._internal_create_key)
+          create_key=descriptor._internal_create_key,
+      )
       scope = {}
 
       # This loop extracts all the message and enum types from all the
@@ -876,10 +938,10 @@ class DescriptorPool(object):
         file=file_desc,
         serialized_start=None,
         serialized_end=None,
-        syntax=syntax,
         is_map_entry=desc_proto.options.map_entry,
         # pylint: disable=protected-access
-        create_key=descriptor._internal_create_key)
+        create_key=descriptor._internal_create_key,
+    )
     for nested in desc.nested_types:
       nested.containing_type = desc
     for enum in desc.enum_types:
