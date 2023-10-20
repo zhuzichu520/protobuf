@@ -449,7 +449,7 @@ void FileGenerator::GenerateDescriptorInitializationCodeForImmutable(
       return field->containing_type()->full_name() == "google.protobuf.FeatureSet";
     });
   }
-  if (!extensions.empty()) {
+  if (true) {
     // Must construct an ExtensionRegistry containing all existing extensions
     // and use it to parse the descriptor data again to recognize extensions.
     printer->Print(
@@ -517,6 +517,7 @@ void FileGenerator::GenerateDescriptorInitializationCodeForMutable(
   FieldDescriptorSet extensions;
   CollectExtensions(file_proto, *file_->pool(), &extensions, file_data);
 
+  // mutable
   if (!extensions.empty()) {
     // Try to load immutable messages' outer class. Its initialization code
     // will take care of interpreting custom options.
