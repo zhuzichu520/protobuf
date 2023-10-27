@@ -14,7 +14,10 @@ cc_library(
         "vsnprintf_compat.h",
     ],
     copts = UPB_DEFAULT_COPTS,
-    textual_hdrs = [":inc"],
+    textual_hdrs = [
+        "def.inc",
+        "undef.inc",
+    ],
     visibility = ["//visibility:public"],
 )
 
