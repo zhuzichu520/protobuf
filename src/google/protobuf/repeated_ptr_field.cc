@@ -167,17 +167,6 @@ void RepeatedPtrFieldBase::CloseGap(int start, int num) {
   ExchangeCurrentSize(current_size_ - num);
 }
 
-MessageLite* RepeatedPtrFieldBase::AddWeak(const MessageLite* prototype) {
-  if (current_size_ < allocated_size()) {
-    return reinterpret_cast<MessageLite*>(
-        element_at(ExchangeCurrentSize(current_size_ + 1)));
-  }
-  MessageLite* result = prototype
-                            ? prototype->New(arena_)
-                            : Arena::CreateMessage<ImplicitWeakMessage>(arena_);
-  return static_cast<MessageLite*>(AddOutOfLineHelper(result));
-}
-
 void InternalOutOfLineDeleteMessageLite(MessageLite* message) {
   delete message;
 }

@@ -298,12 +298,6 @@ class PROTOBUF_EXPORT RepeatedPtrFieldBase {
     return *cast<TypeHandler>(element_at(index));
   }
 
-  // Creates and adds an element using the given prototype, without introducing
-  // a link-time dependency on the concrete message type. This method is used to
-  // implement implicit weak fields. The prototype may be nullptr, in which case
-  // an ImplicitWeakMessage will be used as a placeholder.
-  MessageLite* AddWeak(const MessageLite* prototype);
-
   template <typename TypeHandler>
   void Clear() {
     const int n = current_size_;
